@@ -35,6 +35,10 @@ $stmt = $pdo->prepare("SELECT * FROM proyek_tahap_pembayaran WHERE proyek_id = ?
 $stmt->execute([$id]);
 $tahap_pembayaran = $stmt->fetchAll();
 
+$stmt = $pdo->prepare("SELECT * FROM proyek_dasar_kesepakatan WHERE proyek_id = ? ORDER BY urutan");
+$stmt->execute([$id]);
+$dasar_kesepakatan = $stmt->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $klien_id = $_POST['klien_id'];
     $tanggal = $_POST['tanggal'] ?: date('Y-m-d');
@@ -42,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $diskon_persen = (float)($_POST['diskon_persen'] ?? 0);
     $ppn_persen = (float)($_POST['ppn_persen'] ?? ($entity['kena_ppn'] ? 11 : 0));
     $waktu_pelaksanaan_hari = (int)($_POST['waktu_pelaksanaan_hari'] ?? 7);
+    $alamat_pengiriman = trim($_POST['alamat_pengiriman'] ?? '');
     $new_items = $_POST['items'] ?? [];
 
     $sub_total = 0;
@@ -57,11 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $stmt = $pdo->prepare("
             UPDATE proyek SET klien_id=?, tanggal=?, berlaku_sampai=?, diskon_persen=?, ppn_persen=?,
-                sub_total=?, dpp=?, grand_total=?, waktu_pelaksanaan_hari=?
+                sub_total=?, dpp=?, grand_total=?, waktu_pelaksanaan_hari=?, alamat_pengiriman=?
             WHERE id=? AND entity_id=?
         ");
         $stmt->execute([$klien_id, $tanggal, $berlaku_sampai, $diskon_persen, $ppn_persen,
-            $sub_total, $dpp, $grand_total, $waktu_pelaksanaan_hari, $id, $_SESSION['entity_id']]);
+            $sub_total, $dpp, $grand_total, $waktu_pelaksanaan_hari, $alamat_pengiriman, $id, $_SESSION['entity_id']]);
 
         $pdo->prepare("DELETE FROM proyek_item WHERE proyek_id = ?")->execute([$id]);
 
@@ -94,6 +99,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $d = trim($t['deskripsi'] ?? '');
                 if ($p <= 0 || !$d) continue;
                 $ins->execute([$id, $urutan++, $p, $d]);
+            }
+        }
+
+        // Save dasar kesepakatan
+        $dasar_json = $_POST['dasar_kesepakatan'] ?? '[]';
+        $dasar = json_decode($dasar_json, true);
+        if (is_array($dasar)) {
+            $pdo->prepare("DELETE FROM proyek_dasar_kesepakatan WHERE proyek_id = ?")->execute([$id]);
+            $ins = $pdo->prepare("INSERT INTO proyek_dasar_kesepakatan (proyek_id, urutan, deskripsi) VALUES (?, ?, ?)");
+            $urutan = 1;
+            foreach ($dasar as $d) {
+                $deskripsi = trim($d['deskripsi'] ?? '');
+                if (!$deskripsi) continue;
+                $ins->execute([$id, $urutan++, $deskripsi]);
             }
         }
 
@@ -142,6 +161,31 @@ require '../template/header.php';
               <label class="form-label small">Berlaku Sampai</label>
               <input type="date" name="berlaku_sampai" class="form-control form-control-sm" value="<?= $proyek['berlaku_sampai'] ?>">
             </div>
+          </div>
+          <div class="row g-2 mt-2">
+            <div class="col-12">
+              <label class="form-label small">Alamat Pengiriman <small class="text-muted">(kosongi jika sama dengan alamat klien)</small></label>
+              <textarea name="alamat_pengiriman" class="form-control form-control-sm" rows="2"><?= htmlspecialchars($proyek['alamat_pengiriman'] ?? '') ?></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dasar Kesepakatan -->
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent py-2">
+          <h6 class="fw-bold mb-0">Dasar Kesepakatan</h6>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted">Point 1 otomatis dari Surat Penawaran. Tambahkan point dasar hukum lainnya.</p>
+          <div id="dasarContainer">
+            <table class="table table-sm" id="dasarTable">
+              <thead><tr><th style="width:30px">#</th><th>Deskripsi</th><th style="width:40px"></th></tr></thead>
+              <tbody id="dasarBody"></tbody>
+            </table>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="tambahBarisDasar()">
+              <i class="bi bi-plus-lg"></i> Tambah Point
+            </button>
           </div>
         </div>
       </div>
@@ -437,6 +481,53 @@ function htmlEscape(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Dasar Kesepakatan
+let dasarData = <?= json_encode($dasar_kesepakatan) ?>;
+
+function initDasar() {
+  const form = document.getElementById('proyekForm');
+  form.addEventListener('submit', function() {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'dasar_kesepakatan';
+    input.value = JSON.stringify(dasarData);
+    form.appendChild(input);
+  });
+  if (!dasarData.length) {
+    dasarData = [
+      { deskripsi: 'Surat Pengajuan Negosiasi Pembayaran' },
+      { deskripsi: 'Purchase Order (PO) dari Pihak Pertama' },
+    ];
+  }
+  renderDasar();
+}
+
+function renderDasar() {
+  const tbody = document.getElementById('dasarBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  dasarData.forEach((d, i) => {
+    const no = i + 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="text-center align-middle fw-medium">${no}</td>
+      <td><input type="text" class="form-control form-control-sm" value="${htmlEscape(d.deskripsi)}" onchange="dasarData[${i}].deskripsi = this.value" placeholder="Deskripsi dasar kesepakatan"></td>
+      <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="hapusBarisDasar(${i})"><i class="bi bi-x"></i></button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function tambahBarisDasar() {
+  dasarData.push({ deskripsi: '' });
+  renderDasar();
+}
+
+function hapusBarisDasar(idx) {
+  dasarData.splice(idx, 1);
+  renderDasar();
+}
+
 // Load existing items
 <?php foreach ($items as $item): ?>
 tambahItem(<?= json_encode($item) ?>);
@@ -444,6 +535,7 @@ tambahItem(<?= json_encode($item) ?>);
 if (itemCount === 0) tambahItem();
 
 initTahap();
+initDasar();
 </script>
 
 <?php require '../template/footer.php'; ?>

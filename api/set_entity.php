@@ -16,12 +16,8 @@ if (!$entity_id) {
     exit;
 }
 
-// super_admin can switch to any entity; others only their own
-if ($_SESSION['role'] !== 'super_admin' && $entity_id != $_SESSION['entity_id']) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Forbidden']);
-    exit;
-}
+// Any logged-in user can switch between entities for their session
+
 
 $stmt = $pdo->prepare("SELECT id, name, slug FROM entity WHERE id = ?");
 $stmt->execute([$entity_id]);

@@ -68,7 +68,7 @@ SP → SK → Proforma → (INV DP, INV Pelunasan, SJ, BA)
 | Template | Kompleksitas | Keterangan |
 |----------|:-----------:|------------|
 | Surat Penawaran | Ringkas | Tabel item + total harga |
-| Surat Kesepakatan | Kompleks | Kontrak hukum dengan pasal-pasal, dua kategori (Barang & Pemasangan) |
+| Surat Kesepakatan | Kompleks | Kontrak hukum dengan pasal-pasal, dua kategori (Barang & Jasa) |
 | Proforma Invoice | Ringkas | Tagihan awal sebelum DP/Lunas |
 | Invoice DP | Ringkas | Tagihan DP |
 | Invoice Pelunasan | Ringkas | Tagihan pelunasan |
@@ -94,7 +94,8 @@ Setiap dokumen mendapat **nomor surat** auto-increment per entity per tahun (res
 - **Auto-add Barang**: Ketik nama barang baru di form proyek → otomatis masuk database
 - **Klien Baru Modal**: Tambah klien baru dari form proyek tanpa pindah halaman
 - **Tahap Pembayaran**: Atur persentase & deskripsi tiap tahap (di edit proyek), live preview nominal, auto-hitungan sisa
-- **Riwayat Pembayaran** _(rencana)_: Catat pembayaran klien per proyek (tahap, jumlah, tanggal, metode) — lihat section 13
+- **Arsip Proyek**: Soft delete proyek (toggle arsip), tampil di halaman arsip terpisah
+- **Riwayat Pembayaran** _(rencana)_: Catat pembayaran klien per proyek — lihat section 13
 
 ---
 
@@ -118,28 +119,37 @@ Setiap dokumen mendapat **nomor surat** auto-increment per entity per tahun (res
 swgrafika/
 ├── index.php                   # Redirect ke dashboard
 ├── login.php                   # Halaman login
+├── logout.php                  # Logout
 ├── dashboard.php               # Dashboard + Indeks Penyelesaian
+├── arsip.php                   # Daftar proyek yang diarsipkan
 ├── config/
 │   ├── database.php            # Koneksi PDO MySQL
 │   └── functions.php           # Helper: rupiah(), terbilang(), getNextNoSurat(), dll
+├── database/
+│   ├── backup_sgrafika_kosong.sql   # Struktur tabel saja (kosong)
+│   └── backup_sgrafika_data.sql     # Struktur + data dummy 100 proyek
 ├── proyek/
 │   ├── index.php               # Daftar proyek (card view + doc map)
 │   ├── create.php              # Buat proyek baru
 │   ├── edit.php                # Edit proyek
 │   └── detail.php              # Detail proyek + generate/cetak dokumen
 ├── klien/
-│   └── index.php               # CRUD klien
+│   └── index.php               # CRUD klien + tambah via modal
 ├── barang/
-│   └── index.php               # CRUD barang
+│   └── index.php               # CRUD barang + auto-add dari form proyek
 ├── users/
-│   └── index.php               # CRUD user (super_admin/owner)
+│   └── index.php               # CRUD user (super_admin/owner only)
 ├── api/
 │   ├── get_barang.php          # Search barang (AJAX)
 │   ├── get_klien.php           # Search klien (AJAX)
 │   ├── save_klien.php          # Simpan klien baru via modal
+│   ├── barang_baru.php         # Auto-add barang baru dari form proyek
+│   ├── klien_baru.php          # Tambah klien dari modal dalam form proyek
 │   ├── generate_dokumen.php    # Generate nomor dokumen
 │   ├── set_dp_persen.php       # Simpan persentase DP proyek
-│   └── save_tahap_pembayaran.php # Simpan tahap pembayaran proyek
+│   ├── save_tahap_pembayaran.php # Simpan tahap pembayaran proyek
+│   ├── set_entity.php          # Switch entity (super admin)
+│   └── toggle_arsip.php        # Arsip / aktifkan proyek
 ├── template/
 │   ├── header.php              # Header HTML + sidebar + navbar
 │   ├── footer.php              # Footer HTML + scripts
@@ -149,7 +159,8 @@ swgrafika/
 │   ├── invoice_dp.php          # Template cetak INV DP
 │   ├── invoice_pelunasan.php   # Template cetak INV Pelunasan
 │   ├── surat_jalan.php         # Template cetak SJ
-│   └── ba_serah_terima.php     # Template cetak BA
+│   ├── ba_serah_terima.php     # Template cetak BA
+│   └── invoice.php             # Template invoice legacy
 └── assets/
     ├── css/
     │   └── style.css           # Custom CSS
@@ -202,10 +213,12 @@ proyek           -- 1 proyek untuk semua dokumen
   ├── sub_total          -- auto-calc (SUM jumlah item)
   ├── dpp                -- sub_total - diskon
   ├── grand_total        -- dpp + ppn
+  ├── dp_persen          -- persentase DP (default 50, fallback jika belum ada tahap)
+  ├── waktu_pelaksanaan_hari -- default 7
   ├── no_sp              -- null = belum dibuat
   ├── no_sk              -- null = belum dibuat
+  ├── no_inv             -- legacy (tidak dipakai)
   ├── no_proforma        -- null = belum dibuat
-  ├── dp_persen           -- persentase DP (default 50, bisa diatur sebelum generate INV DP)
   ├── no_inv_dp          -- null = belum dibuat
   ├── no_inv_pelunasan   -- null = belum dibuat
   ├── no_sj              -- null = belum dibuat
@@ -222,8 +235,8 @@ proyek_item      -- Items dalam proyek
   ├── keterangan        -- custom tiap proyek
   ├── harga             -- custom tiap proyek
   ├── qty
-  ├── jumlah            -- VIRTUAL GENERATED (harga * qty)
-  └── no_urut
+  ├── satuan            -- satuan unit (misal: pcs, meter)
+  └── jumlah            -- VIRTUAL GENERATED (harga * qty)
 ```
 
 ### Kolom konfigurasi
@@ -302,8 +315,9 @@ proyek_pembayaran   -- (rencana)
 ```bash
 # 1. Letakkan project di C:\laragon\www\swgrafika
 # 2. Start Laragon (Apache + MySQL)
-# 3. Import database:
-mysql -u root -p < database.sql
+# 3. Import database (pilih salah satu):
+mysql -u root -p < database/backup_sgrafika_kosong.sql   # struktur aja
+mysql -u root -p < database/backup_sgrafika_data.sql     # + data dummy 100 proyek
 # 4. Buka di browser:
 http://localhost/swgrafika
 ```
@@ -378,6 +392,21 @@ grand_total    = dpp + ppn_nominal
 - Tidak ada hapus permanen
 - Data diarsipkan dengan flag `is_archived = 1`
 - Tidak muncul di daftar proyek utama
+
+### Database Backup
+- File backup ada di folder `database/`:
+  - `backup_sgrafika_kosong.sql` — struktur tabel saja
+  - `backup_sgrafika_data.sql` — struktur + data dummy (100 proyek, 20 klien, 29 barang)
+- Data dummy seed via script ad-hoc, sudah dihapus setelah digunakan
+
+### Multi-User Default (data dummy)
+| Nama | Email | Role |
+|------|-------|------|
+| Super Admin | `admin@sriwijayagrafika.com` | super_admin |
+| Budi Santoso | `budi@sriwijayagrafika.com` | admin |
+| Siti Rahmawati | `siti@sriwijayagrafika.com` | admin |
+| Ahmad Fauzi | `ahmad@workshop.com` | owner (Workshop) |
+| Dewi Lestari | `dewi@sriwijayagrafika.com` | karyawan |
 
 ---
 

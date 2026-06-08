@@ -68,7 +68,7 @@ th { background: #f0f0f0; font-weight: 600; text-align: center; }
 <div class="info">
   <p><strong>Pengirim:</strong> <?= htmlspecialchars($proyek['entity_name']) ?></p>
   <p><strong>Penerima:</strong> <?= htmlspecialchars($proyek['nama_perusahaan']) ?></p>
-  <p><strong>Alamat:</strong> <?= htmlspecialchars($proyek['klien_alamat'] ?: '-') ?></p>
+  <p><strong>Alamat:</strong> <?= htmlspecialchars($proyek['alamat_pengiriman'] ?: $proyek['klien_alamat'] ?: '-') ?></p>
   <p><strong>ID Transaksi:</strong> <?= htmlspecialchars($proyek['no_referensi']) ?></p>
 </div>
 

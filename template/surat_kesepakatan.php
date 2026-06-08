@@ -26,6 +26,10 @@ $stmt = $pdo->prepare("
 $stmt->execute([$proyek_id]);
 $items = $stmt->fetchAll();
 
+$stmt = $pdo->prepare("SELECT * FROM proyek_dasar_kesepakatan WHERE proyek_id = ? ORDER BY urutan");
+$stmt->execute([$proyek_id]);
+$dasar_kesepakatan = $stmt->fetchAll();
+
 // Separate by kategori
 $items_barang = array_filter($items, fn($i) => $i['kategori'] === 'barang');
 $items_pekerjaan = array_filter($items, fn($i) => $i['kategori'] === 'pekerjaan');
@@ -110,6 +114,9 @@ $tahun = date('Y');
     <tr><td style="width:150px">Nama</td><td>: <?= htmlspecialchars($proyek['pic'] ?: '-') ?></td></tr>
     <tr><td>Jabatan</td><td>: Direktur</td></tr>
     <tr><td>Alamat</td><td>: <?= htmlspecialchars($proyek['klien_alamat'] ?: '-') ?></td></tr>
+    <?php if (!empty($proyek['alamat_pengiriman'])): ?>
+    <tr><td>Alamat Pengiriman</td><td>: <?= htmlspecialchars($proyek['alamat_pengiriman']) ?></td></tr>
+    <?php endif; ?>
     <tr><td>Bertindak atas nama</td><td>: <?= htmlspecialchars($proyek['nama_perusahaan']) ?></td></tr>
   </table>
 
@@ -126,8 +133,12 @@ $tahun = date('Y');
   <h3>PASAL 1: DASAR KESEPAKATAN</h3>
   <p>Kesepakatan ini berdasarkan:</p>
   <p>1. Surat Penawaran No. <?= htmlspecialchars($proyek['no_sp'] ?: '-') ?></p>
+  <?php if ($dasar_kesepakatan): $no = 2; foreach ($dasar_kesepakatan as $dk): ?>
+  <p><?= $no++ ?>. <?= htmlspecialchars($dk['deskripsi']) ?></p>
+  <?php endforeach; else: ?>
   <p>2. Surat Pengajuan Negosiasi Pembayaran</p>
   <p>3. Purchase Order (PO) dari Pihak Pertama</p>
+  <?php endif; ?>
 </div>
 
 <div class="pasal">
@@ -209,7 +220,7 @@ $tahun = date('Y');
 
 <div class="pasal">
   <h3>PASAL 5: WAKTU PELAKSANAAN</h3>
-  <p>Waktu pelaksanaan jasa adalah <?= (int)$proyek['waktu_pelaksanaan_hari'] ?> (<?= strtolower(trim(_terbilang((int)$proyek['waktu_pelaksanaan_hari']))) ?>) hari kalender setelah DP diterima. Apabila terjadi perubahan waktu, akan diberitahukan secara tertulis.</p>
+  <p>Waktu pelaksanaan jasa adalah <?= (int)$proyek['waktu_pelaksanaan_hari'] ?> (<?= strtolower(trim(_terbilang((int)$proyek['waktu_pelaksanaan_hari']))) ?>) hari kalender setelah DP diterima. Apabila terjadi perubahan waktu, akan diberitahu.</p>
 </div>
 
 <div class="pasal">

@@ -39,6 +39,23 @@ $stmt = $pdo->prepare("SELECT * FROM proyek_tahap_pembayaran WHERE proyek_id = ?
 $stmt->execute([$id]);
 $tahap_pembayaran = $stmt->fetchAll();
 
+$stmt = $pdo->prepare("SELECT * FROM proyek_dasar_kesepakatan WHERE proyek_id = ? ORDER BY urutan");
+$stmt->execute([$id]);
+$dasar_kesepakatan = $stmt->fetchAll();
+
+// Ambil riwayat pembayaran untuk menghitung sisa tagihan & progress
+$stmt = $pdo->prepare("SELECT * FROM proyek_pembayaran WHERE proyek_id = ? ORDER BY tanggal ASC, id ASC");
+$stmt->execute([$id]);
+$pembayaran_list = $stmt->fetchAll();
+
+$total_terbayar = 0;
+foreach ($pembayaran_list as $pemb) {
+    $total_terbayar += (float)$pemb['jumlah'];
+}
+$sisa_tagihan = max(0, $proyek['grand_total'] - $total_terbayar);
+$persen_terbayar = $proyek['grand_total'] > 0 ? round(($total_terbayar / $proyek['grand_total']) * 100) : 0;
+$status_saat_ini_lunas = ($sisa_tagihan <= 0);
+
 require '../template/header.php';
 ?>
 
@@ -79,6 +96,9 @@ require '../template/header.php';
           <div class="col-md-6"><strong>PIC:</strong> <?= htmlspecialchars($proyek['pic'] ?: '-') ?></div>
           <div class="col-md-6"><strong>Telp:</strong> <?= htmlspecialchars($proyek['klien_telp'] ?: '-') ?></div>
           <div class="col-12"><strong>Alamat:</strong> <?= htmlspecialchars($proyek['klien_alamat'] ?: '-') ?></div>
+          <?php if (!empty($proyek['alamat_pengiriman'])): ?>
+          <div class="col-12"><strong>Alamat Pengiriman:</strong> <?= htmlspecialchars($proyek['alamat_pengiriman']) ?></div>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -148,8 +168,114 @@ require '../template/header.php';
         <?php else: ?>
         <small class="text-muted">Belum ada tahap pembayaran.</small>
         <?php endif; ?>
-        <a href="edit.php?id=<?= $id ?>" class="btn btn-sm btn-outline-primary w-100">
+        <a href="edit.php?id=<?= $id ?>" class="btn btn-sm btn-outline-primary w-100 mt-2">
           <i class="bi bi-gear"></i> Atur Tahap Pembayaran
+        </a>
+      </div>
+    </div>
+
+    <!-- Riwayat Pembayaran & Kuitansi -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center">
+        <h6 class="fw-bold mb-0">Riwayat Pembayaran & Kuitansi</h6>
+        <a href="riwayat_pembayaran.php" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size: 0.75rem;">
+          <i class="bi bi-list-ul me-1"></i>Lihat Semua
+        </a>
+        <span class="badge bg-<?= $status_saat_ini_lunas ? 'success' : 'danger' ?>">
+          <?= $status_saat_ini_lunas ? 'Lunas' : 'Belum Lunas' ?>
+        </span>
+      </div>
+      <div class="card-body">
+        <!-- Progress Bar -->
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small fw-medium mb-1">
+            <span>Progress Pembayaran</span>
+            <span><?= $persen_terbayar ?>% (<?= rupiah($total_terbayar) ?> / <?= rupiah($proyek['grand_total']) ?>)</span>
+          </div>
+          <div class="progress" style="height: 10px;">
+            <div class="progress-bar bg-<?= $status_saat_ini_lunas ? 'success' : 'primary' ?>" role="progressbar" style="width: <?= $persen_terbayar ?>%" aria-valuenow="<?= $persen_terbayar ?>" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <div class="text-end small mt-1 text-muted">
+            Sisa Tagihan: <strong class="text-<?= $status_saat_ini_lunas ? 'success' : 'danger' ?>"><?= rupiah($sisa_tagihan) ?></strong>
+          </div>
+        </div>
+
+        <!-- Tabel Riwayat -->
+        <?php if ($pembayaran_list): ?>
+        <div class="table-responsive mb-3">
+          <table class="table table-sm table-hover mb-0" style="font-size: 0.85rem;">
+            <thead>
+              <tr>
+                <th>No Kuitansi</th>
+                <th>Tanggal</th>
+                <th class="text-end">Jumlah</th>
+                <th>Metode</th>
+                <th>Rujukan Invoice</th>
+                <th>Keterangan</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($pembayaran_list as $pemb): ?>
+              <tr>
+                <td class="fw-medium"><code><?= htmlspecialchars($pemb['no_kuitansi']) ?></code></td>
+                <td><?= date('d/m/Y', strtotime($pemb['tanggal'])) ?></td>
+                <td class="text-end fw-semibold"><?= rupiah($pemb['jumlah']) ?></td>
+                <td><?= htmlspecialchars($pemb['metode_pembayaran']) ?></td>
+                <td><small class="text-muted"><?= htmlspecialchars($pemb['no_invoice'] ?: '-') ?></small></td>
+                <td><small class="text-muted"><?= htmlspecialchars($pemb['keterangan'] ?: '-') ?></small></td>
+                <td class="text-end">
+                  <div class="d-flex gap-1 justify-content-end">
+                    <a href="../template/kuitansi.php?id=<?= $pemb['id'] ?>" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size: 0.75rem;" title="Cetak Kuitansi">
+                      <i class="bi bi-printer"></i>
+                    </a>
+                    <button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size: 0.75rem;" onclick="hapusPembayaran(<?= $pemb['id'] ?>)" title="Hapus">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <?php else: ?>
+        <div class="text-center py-3 text-muted small">
+          Belum ada riwayat pembayaran untuk proyek ini.
+        </div>
+        <?php endif; ?>
+
+        <!-- Tombol Tambah Pembayaran -->
+        <?php if (!$status_saat_ini_lunas): ?>
+        <button class="btn btn-sm btn-primary w-100" onclick="tambahPembayaran()">
+          <i class="bi bi-plus-lg me-1"></i> Catat Pembayaran Baru
+        </button>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- Dasar Kesepakatan -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent py-2">
+        <h6 class="fw-bold mb-0">Dasar Kesepakatan</h6>
+      </div>
+      <div class="card-body">
+        <?php if ($dasar_kesepakatan): ?>
+        <ol class="small mb-0 ps-3">
+          <li>Surat Penawaran No. <?= htmlspecialchars($proyek['no_sp'] ?: '-') ?></li>
+          <?php foreach ($dasar_kesepakatan as $dk): ?>
+          <li><?= htmlspecialchars($dk['deskripsi']) ?></li>
+          <?php endforeach; ?>
+        </ol>
+        <?php else: ?>
+        <ol class="small mb-0 ps-3">
+          <li>Surat Penawaran No. <?= htmlspecialchars($proyek['no_sp'] ?: '-') ?></li>
+          <li>Surat Pengajuan Negosiasi Pembayaran</li>
+          <li>Purchase Order (PO) dari Pihak Pertama</li>
+        </ol>
+        <?php endif; ?>
+        <a href="edit.php?id=<?= $id ?>" class="btn btn-sm btn-outline-primary w-100 mt-2">
+          <i class="bi bi-gear"></i> Atur Dasar Kesepakatan
         </a>
       </div>
     </div>
@@ -174,12 +300,23 @@ require '../template/header.php';
         ];
         ?>
         <div class="d-flex flex-column gap-2">
-          <?php foreach ($docs as $jenis => $doc):
+          <?php
+          $visibleDocs = [];
+          foreach ($docs as $jenis => $doc):
             $kolom = "no_$jenis";
             $ada = $proyek[$kolom];
             $prasyarat_terpenuhi = !$doc['prasyarat'] || $proyek[$doc['prasyarat']];
-            if (!$ada && !$prasyarat_terpenuhi) continue;
+            if ($jenis !== 'sp' && !$ada && !$prasyarat_terpenuhi) continue;
+            $visibleDocs[] = [$jenis, $doc, $ada];
+          endforeach;
           ?>
+          <?php if (empty($visibleDocs)): ?>
+          <div class="text-center py-3 text-muted small">
+            Belum ada dokumen yang bisa dibuat.<br>
+            Buat <strong>Surat Penawaran</strong> terlebih dahulu.
+          </div>
+          <?php else: ?>
+            <?php foreach ($visibleDocs as [$jenis, $doc, $ada]): ?>
           <div class="d-flex align-items-center justify-content-between p-2 rounded border">
             <div>
               <i class="bi bi-<?= $doc['icon'] ?> text-<?= $doc['color'] ?> me-1"></i>
@@ -197,9 +334,6 @@ require '../template/header.php';
                 <i class="bi bi-printer"></i> Cetak
               </a>
               <?php elseif ($jenis === 'inv_dp'): ?>
-              <button class="btn btn-sm btn-warning" onclick="aturDP(<?= $id ?>)">
-                <i class="bi bi-sliders"></i> Atur Jumlah DP
-              </button>
               <button class="btn btn-sm btn-dark" onclick="generateDokumen(<?= $id ?>, '<?= $jenis ?>', this)">
                 <i class="bi bi-plus-circle"></i> Buat
               </button>
@@ -210,7 +344,8 @@ require '../template/header.php';
               <?php endif; ?>
             </div>
           </div>
-          <?php endforeach; ?>
+            <?php endforeach; ?>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -261,7 +396,162 @@ require '../template/header.php';
   </div>
 </div>
 
+<!-- Modal Catat Pembayaran -->
+<div class="modal fade" id="modalCatatPembayaran" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold">Catat Pembayaran Baru</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form onsubmit="simpanPembayaran(event)">
+        <input type="hidden" name="proyek_id" value="<?= $id ?>">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-medium">Tanggal Pembayaran</label>
+            <input type="date" name="tanggal" class="form-control" value="<?= date('Y-m-d') ?>" required>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label small fw-medium">Telah Diterima Dari</label>
+            <input type="text" name="telah_diterima_dari" class="form-control" value="<?= htmlspecialchars($proyek['pic'] ?: $proyek['nama_perusahaan']) ?>" required>
+            <div class="form-text small" style="font-size: 0.75rem;">Nama pembayar atau penanggung jawab pembayaran.</div>
+          </div>
+
+          <div class="row g-2">
+              <div class="col-md-6 mb-3">
+                <label class="form-label small fw-medium">Nominal Pembayaran</label>
+                <div class="input-group">
+                  <span class="input-group-text">Rp</span>
+                  <input type="text" name="jumlah" id="jumlahInput" class="form-control" value="<?= number_format(round($sisa_tagihan), 0, ',', '.') ?>" required inputmode="numeric" pattern="[0-9.]*">
+                </div>
+                <div class="form-text small" style="font-size: 0.75rem;">Sisa: <?= rupiah($sisa_tagihan) ?></div>
+              </div>
+            
+            <div class="col-md-6 mb-3">
+              <label class="form-label small fw-medium">Metode Pembayaran</label>
+              <select name="metode_pembayaran" class="form-select" required>
+                <option value="Transfer BCA">Transfer BCA</option>
+                <option value="Transfer Mandiri">Transfer Mandiri</option>
+                <option value="Tunai">Tunai / Cash</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-medium">Rujukan Nomor Invoice / Dokumen</label>
+            <select name="no_invoice" class="form-select">
+              <option value="">-- Tanpa Rujukan --</option>
+              <?php if ($proyek['no_inv_dp']): ?>
+                <option value="<?= htmlspecialchars($proyek['no_inv_dp']) ?>">Invoice DP (<?= htmlspecialchars($proyek['no_inv_dp']) ?>)</option>
+              <?php endif; ?>
+              <?php if ($proyek['no_inv_pelunasan']): ?>
+                <option value="<?= htmlspecialchars($proyek['no_inv_pelunasan']) ?>">Invoice Pelunasan (<?= htmlspecialchars($proyek['no_inv_pelunasan']) ?>)</option>
+              <?php endif; ?>
+              <?php if ($proyek['no_proforma']): ?>
+                <option value="<?= htmlspecialchars($proyek['no_proforma']) ?>">Proforma Invoice (<?= htmlspecialchars($proyek['no_proforma']) ?>)</option>
+              <?php endif; ?>
+              <?php if ($proyek['no_sp']): ?>
+                <option value="<?= htmlspecialchars($proyek['no_sp']) ?>">Surat Penawaran (<?= htmlspecialchars($proyek['no_sp']) ?>)</option>
+              <?php endif; ?>
+            </select>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-medium">Keterangan / Deskripsi</label>
+            <textarea name="keterangan" class="form-control" rows="2" placeholder="Contoh: Pembayaran Uang Muka DP 50% atau Pembayaran Tahap Pelunasan"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="btnSimpanPembayaran">
+            <i class="bi bi-check-lg me-1"></i>Simpan Catatan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
+function formatRupiahInput(input) {
+  let value = input.value.replace(/[^0-9]/g, '');
+  if (value) {
+    value = parseInt(value, 10).toLocaleString('id-ID');
+  }
+  input.value = value;
+}
+
+function getRawNumber(formattedValue) {
+  return parseInt(formattedValue.replace(/[^0-9]/g, ''), 10) || 0;
+}
+
+document.getElementById('jumlahInput')?.addEventListener('input', function(e) {
+  const cursorPos = e.target.selectionStart;
+  const oldValue = e.target.value;
+  formatRupiahInput(e.target);
+  const newValue = e.target.value;
+  const diff = newValue.length - oldValue.length;
+  e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
+});
+
+function tambahPembayaran() {
+  new bootstrap.Modal(document.getElementById('modalCatatPembayaran')).show();
+}
+
+function simpanPembayaran(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btnSimpanPembayaran');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Menyimpan...';
+  
+  const form = e.target;
+  const formData = new FormData(form);
+  
+  const jumlahInput = document.getElementById('jumlahInput');
+  if (jumlahInput) {
+    formData.set('jumlah', getRawNumber(jumlahInput.value));
+  }
+
+  fetch('../api/simpan_pembayaran.php', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
+      } else {
+        alert(data.error || 'Gagal menyimpan pembayaran');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Simpan Catatan';
+      }
+    })
+    .catch(() => {
+      alert('Gagal menghubungi server');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Simpan Catatan';
+    });
+}
+
+function hapusPembayaran(id) {
+  if (!confirm('Apakah Anda yakin ingin menghapus catatan pembayaran ini? Tindakan ini tidak dapat dibatalkan.')) return;
+  
+  const formData = new FormData();
+  formData.append('id', id);
+
+  fetch('../api/hapus_pembayaran.php', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
+      } else {
+        alert(data.error || 'Gagal menghapus pembayaran');
+      }
+    })
+    .catch(() => {
+      alert('Gagal menghubungi server');
+    });
+}
+
 function aturDP(proyekId) {
   hitungPreview();
   document.getElementById('dpInput').dataset.proyekId = proyekId;

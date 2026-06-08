@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= $title ?? 'Sistem Administratif' ?> - Sriwijaya Grafika</title>
+  <title><?= $title ?? 'Sistem Administratif' ?> - <?= htmlspecialchars($_SESSION['entity_name'] ?? 'Sriwijaya Grafika') ?></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -14,38 +14,26 @@
     <!-- Sidebar -->
     <nav class="sidebar d-none d-md-flex flex-column flex-shrink-0" id="sidebar">
       <div class="sidebar-header d-flex align-items-center gap-2 px-3 py-3">
-        <i class="bi bi-shield-shaded fs-4" style="color:var(--bs-primary)"></i>
-        <span class="fw-bold fs-6">Sriwijaya Grafika</span>
-      </div>
-      <?php
-      // Get all entities for switcher (super_admin can switch)
-      try {
-        $stmt_entities = $pdo->query("SELECT id, name, slug FROM entity ORDER BY name ASC");
-        $all_entities = $stmt_entities->fetchAll();
-      } catch (Exception $e) { $all_entities = []; }
-      ?>
-      <div class="entity-badge px-3 py-2 mb-2">
-        <?php if ($_SESSION['role'] === 'super_admin' && count($all_entities) > 1): ?>
-        <div class="dropdown">
-          <button class="btn btn-warning-subtle text-warning-emphasis w-100 py-2 dropdown-toggle d-flex align-items-center justify-content-center gap-1" data-bs-toggle="dropdown" style="border:none;font-size:0.8rem">
-            <i class="bi bi-building"></i>
-            <span id="entityNameDisplay"><?= htmlspecialchars($_SESSION['entity_name'] ?? '') ?></span>
-          </button>
-          <ul class="dropdown-menu w-100">
-            <?php foreach ($all_entities as $e): ?>
-            <li>
-              <a class="dropdown-item small <?= $e['id'] == $_SESSION['entity_id'] ? 'active' : '' ?>" href="#" onclick="switchEntity(<?= $e['id'] ?>, '<?= htmlspecialchars($e['name'], ENT_QUOTES) ?>');return false">
-                <?= htmlspecialchars($e['name']) ?>
-              </a>
-            </li>
-            <?php endforeach; ?>
-          </ul>
-        </div>
-        <?php else: ?>
-        <span class="badge bg-warning-subtle text-warning-emphasis w-100 py-2">
-          <i class="bi bi-building me-1"></i><?= htmlspecialchars($_SESSION['entity_name'] ?? '') ?>
+        <img src="<?= BASE_URL ?>/img/<?= $_SESSION['entity_id'] == 2 ? 'workshop_sriwijaya.svg' : 'sriwijaya_grafika.svg' ?>" alt="Logo" style="height: 28px; width: 28px; object-fit: contain;">
+        <span class="fw-bold" style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <?= $_SESSION['entity_id'] == 2 ? 'Workshop Sriwijaya' : 'Sriwijaya Grafika' ?>
         </span>
-        <?php endif; ?>
+      </div>
+      <div class="entity-toggle-container">
+        <div class="entity-toggle-track">
+          <!-- Sriwijaya Grafika -->
+          <a href="#" onclick="switchEntity(1, 'Sriwijaya Grafika'); return false;" 
+             class="entity-toggle-btn <?= $_SESSION['entity_id'] == 1 ? 'active' : '' ?>"
+             title="Sriwijaya Grafika">
+            <img src="<?= BASE_URL ?>/img/sriwijaya_grafika.svg" alt="Sriwijaya Grafika">
+          </a>
+          <!-- Workshop Sriwijaya -->
+          <a href="#" onclick="switchEntity(2, 'Workshop Sriwijaya'); return false;" 
+             class="entity-toggle-btn <?= $_SESSION['entity_id'] == 2 ? 'active' : '' ?>"
+             title="Workshop Sriwijaya">
+            <img src="<?= BASE_URL ?>/img/workshop_sriwijaya.svg" alt="Workshop Sriwijaya">
+          </a>
+        </div>
       </div>
       <ul class="nav nav-pills flex-column mb-auto px-2">
         <li class="nav-item">
@@ -56,6 +44,11 @@
         <li class="nav-item">
           <a href="<?= BASE_URL ?>/proyek/index.php" class="nav-link <?= str_contains($_SERVER['PHP_SELF'], '/proyek/') ? 'active' : '' ?>">
             <i class="bi bi-folder2 me-2"></i>Proyek
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="<?= BASE_URL ?>/proyek/riwayat_pembayaran.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'riwayat_pembayaran.php' ? 'active' : '' ?>">
+            <i class="bi bi-receipt me-2"></i>Riwayat Pembayaran
           </a>
         </li>
         <li class="nav-item">
@@ -111,23 +104,27 @@
       <!-- Mobile Navigation Collapse -->
       <div class="collapse d-md-none" id="mobileNav">
         <div class="bg-white border-bottom px-3 py-2">
-          <?php if ($_SESSION['role'] === 'super_admin' && count($all_entities) > 1): ?>
-          <div class="mb-2 px-2">
-            <small class="text-muted">Entity:</small>
-            <select class="form-select form-select-sm mt-1" onchange="switchEntity(this.value, this.options[this.selectedIndex].text)">
-              <?php foreach ($all_entities as $e): ?>
-              <option value="<?= $e['id'] ?>" <?= $e['id'] == $_SESSION['entity_id'] ? 'selected' : '' ?>><?= htmlspecialchars($e['name']) ?></option>
-              <?php endforeach; ?>
-            </select>
+          <div class="mb-3 px-2">
+            <small class="text-muted d-block mb-2">Entity Switcher:</small>
+            <div class="entity-toggle-track" style="max-width: 150px;">
+              <!-- Sriwijaya Grafika -->
+              <a href="#" onclick="switchEntity(1, 'Sriwijaya Grafika'); return false;" 
+                 class="entity-toggle-btn <?= $_SESSION['entity_id'] == 1 ? 'active' : '' ?>"
+                 title="Sriwijaya Grafika">
+                <img src="<?= BASE_URL ?>/img/sriwijaya_grafika.svg" alt="Sriwijaya Grafika">
+              </a>
+              <!-- Workshop Sriwijaya -->
+              <a href="#" onclick="switchEntity(2, 'Workshop Sriwijaya'); return false;" 
+                 class="entity-toggle-btn <?= $_SESSION['entity_id'] == 2 ? 'active' : '' ?>"
+                 title="Workshop Sriwijaya">
+                <img src="<?= BASE_URL ?>/img/workshop_sriwijaya.svg" alt="Workshop Sriwijaya">
+              </a>
+            </div>
           </div>
-          <?php else: ?>
-          <div class="mb-2 px-2">
-            <small class="text-muted">Entity: <strong><?= htmlspecialchars($_SESSION['entity_name'] ?? '') ?></strong></small>
-          </div>
-          <?php endif; ?>
           <ul class="nav nav-pills flex-column">
             <li class="nav-item"><a href="<?= BASE_URL ?>/dashboard.php" class="nav-link"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
             <li class="nav-item"><a href="<?= BASE_URL ?>/proyek/index.php" class="nav-link"><i class="bi bi-folder2 me-2"></i>Proyek</a></li>
+            <li class="nav-item"><a href="<?= BASE_URL ?>/proyek/riwayat_pembayaran.php" class="nav-link"><i class="bi bi-receipt me-2"></i>Riwayat Pembayaran</a></li>
             <li class="nav-item"><a href="<?= BASE_URL ?>/klien/index.php" class="nav-link"><i class="bi bi-people me-2"></i>Klien</a></li>
             <li class="nav-item"><a href="<?= BASE_URL ?>/barang/index.php" class="nav-link"><i class="bi bi-box-seam me-2"></i>Barang</a></li>
             <?php if (in_array($_SESSION['role'], ['super_admin', 'owner'])): ?>
