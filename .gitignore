@@ -14,3 +14,4 @@ Thumbs.db
 
 # Project specific
 seed.php
+backup_*.sql
